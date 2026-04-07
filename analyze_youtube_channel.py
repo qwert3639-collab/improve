@@ -24,22 +24,14 @@ except ImportError:
     install("google-generativeai")
     import google.generativeai as genai
 
-try:
-    import anthropic
-except ImportError:
-    print("anthropic 설치 중...")
-    install("anthropic")
-    import anthropic
-
 # ── API 키 입력 ──────────────────────────────────────────────────────
 print("=" * 60)
 print("  YouTube 채널 투자 원칙 분석기")
 print("=" * 60)
 print()
 
-YOUTUBE_API_KEY  = os.environ.get("YOUTUBE_API_KEY")  or input("YouTube Data API 키: ").strip()
-GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY")   or input("Gemini API 키: ").strip()
-ANTHROPIC_API_KEY= os.environ.get("ANTHROPIC_API_KEY")or input("Anthropic API 키: ").strip()
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY") or input("YouTube Data API 키: ").strip()
+GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY")  or input("Gemini API 키: ").strip()
 
 CHANNEL_HANDLE = "@TV-lb7cv"
 
@@ -123,10 +115,8 @@ def get_transcript_gemini(video_id, title):
         print(f"(Gemini 오류: {err})", end=" ", flush=True)
         return None
 
-# ── Claude로 분석 ────────────────────────────────────────────────────
-def analyze_with_claude(transcripts_data):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
+# ── Gemini로 분석 ────────────────────────────────────────────────────
+def analyze_with_gemini(transcripts_data):
     combined = ""
     for item in transcripts_data:
         combined += f"\n\n[영상: {item['title']}]\n{item['transcript']}"
@@ -136,7 +126,7 @@ def analyze_with_claude(transcripts_data):
         print(f"\n  (자막이 너무 길어 앞 {max_chars:,}자만 분석합니다)")
         combined = combined[:max_chars]
 
-    print("\nClaude로 분석 중... (잠시 기다려주세요)")
+    print("\nGemini로 분석 중... (잠시 기다려주세요)")
 
     prompt = f"""다음은 유튜브 채널 '창원개미TV' 영상들의 내용입니다.
 
@@ -157,12 +147,9 @@ def analyze_with_claude(transcripts_data):
 - **원칙**: 설명 (영상 내 언급된 표현 또는 예시)
 """
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return message.content[0].text
+    model = genai.GenerativeModel("gemini-1.5-pro")
+    response = model.generate_content(prompt)
+    return response.text
 
 # ── 메인 ─────────────────────────────────────────────────────────────
 def main():
@@ -204,7 +191,7 @@ def main():
         print("분석할 내용이 없습니다.")
         sys.exit(1)
 
-    result = analyze_with_claude(transcripts_data)
+    result = analyze_with_gemini(transcripts_data)
 
     print("\n" + "=" * 60)
     print("  분석 결과")

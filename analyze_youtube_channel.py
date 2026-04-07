@@ -41,6 +41,13 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or input("Anthropic API 
 
 CHANNEL_HANDLE = "@TV-lb7cv"
 
+# 쿠키 파일 경로 (IpBlocked 오류 시 필요)
+COOKIES_FILE = "cookies.txt" if os.path.exists("cookies.txt") else None
+if COOKIES_FILE:
+    print("쿠키 파일 감지됨 - 인증된 요청으로 진행합니다.")
+else:
+    print("쿠키 파일 없음 - 차단될 경우 cookies.txt를 같은 폴더에 넣어주세요.")
+
 # ── YouTube API 헬퍼 ──────────────────────────────────────────────
 def youtube_get(endpoint, params):
     params["key"] = YOUTUBE_API_KEY
@@ -126,7 +133,7 @@ def get_all_video_ids(channel_id):
 
 def get_transcript(video_id, title):
     """자막 가져오기 - 가능한 모든 방법 시도"""
-    api = YouTubeTranscriptApi()
+    api = YouTubeTranscriptApi(cookies=COOKIES_FILE) if COOKIES_FILE else YouTubeTranscriptApi()
 
     try:
         transcript_list = api.list(video_id)

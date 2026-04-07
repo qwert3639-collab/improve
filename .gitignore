@@ -1,0 +1,30 @@
+# 환경 설정 (API 키 포함 - 절대 커밋하지 말 것)
+.env
+
+# 데이터 (로컬 DB, 캐시)
+data/
+
+# 로그
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# 가상환경
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

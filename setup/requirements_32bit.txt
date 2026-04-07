@@ -1,0 +1,2 @@
+pywin32>=305
+pykiwoom>=0.0.19

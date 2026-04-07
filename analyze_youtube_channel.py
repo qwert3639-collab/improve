@@ -140,7 +140,7 @@ def get_transcript(video_id, title):
             "--sub-format", "vtt",
             "--skip-download",
             "--no-warnings",
-            "--cookies-from-browser", "chrome",
+            "--cookies-from-browser", "edge",
             "-o", tmp_prefix,
             url
         ]

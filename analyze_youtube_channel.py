@@ -17,11 +17,10 @@ def install(package):
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
 try:
-    from youtube_transcript_api import YouTubeTranscriptApi
+    import yt_dlp
 except ImportError:
-    print("youtube-transcript-api 설치 중...")
-    install("youtube-transcript-api")
-    from youtube_transcript_api import YouTubeTranscriptApi
+    print("yt-dlp 설치 중...")
+    install("yt-dlp")
 
 try:
     import anthropic
@@ -41,12 +40,6 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or input("Anthropic API 
 
 CHANNEL_HANDLE = "@TV-lb7cv"
 
-# 쿠키 파일 경로 (IpBlocked 오류 시 필요)
-COOKIES_FILE = "cookies.txt" if os.path.exists("cookies.txt") else None
-if COOKIES_FILE:
-    print("쿠키 파일 감지됨 - 인증된 요청으로 진행합니다.")
-else:
-    print("쿠키 파일 없음 - 차단될 경우 cookies.txt를 같은 폴더에 넣어주세요.")
 
 # ── YouTube API 헬퍼 ──────────────────────────────────────────────
 def youtube_get(endpoint, params):
@@ -132,48 +125,67 @@ def get_all_video_ids(channel_id):
     return videos
 
 def get_transcript(video_id, title):
-    """자막 가져오기 - 가능한 모든 방법 시도"""
-    api = YouTubeTranscriptApi(cookies=COOKIES_FILE) if COOKIES_FILE else YouTubeTranscriptApi()
+    """yt-dlp로 자막 가져오기 (브라우저 쿠키 자동 사용)"""
+    import subprocess
+    import glob
+
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    tmp_prefix = f"_tmp_{video_id}"
 
     try:
-        transcript_list = api.list(video_id)
-        transcripts = list(transcript_list)
+        cmd = [
+            "yt-dlp",
+            "--write-auto-sub",
+            "--sub-lang", "ko",
+            "--sub-format", "vtt",
+            "--skip-download",
+            "--no-warnings",
+            "--cookies-from-browser", "chrome",
+            "-o", tmp_prefix,
+            url
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
-        if not transcripts:
-            print(f"(자막 목록 자체가 비어있음)", end=" ", flush=True)
+        # 생성된 자막 파일 읽기
+        vtt_files = glob.glob(f"{tmp_prefix}*.vtt")
+        if not vtt_files:
+            # 자막 파일이 없으면 실패
             return None
 
-        available = [f"{t.language_code}({'자동' if t.is_generated else '수동'})" for t in transcripts]
-        print(f"(사용 가능: {', '.join(available)})", end=" ", flush=True)
+        # vtt → 텍스트 변환
+        with open(vtt_files[0], encoding="utf-8") as f:
+            lines = f.readlines()
 
-        # 1순위: 수동 한국어
-        for t in transcripts:
-            if t.language_code in ("ko", "ko-KR") and not t.is_generated:
-                text = " ".join(chunk.text for chunk in t.fetch())
-                return text
+        text_lines = []
+        for line in lines:
+            line = line.strip()
+            if not line or "-->" in line or line.startswith("WEBVTT") or line.isdigit():
+                continue
+            # HTML 태그 제거
+            import re
+            line = re.sub(r"<[^>]+>", "", line)
+            if line:
+                text_lines.append(line)
 
-        # 2순위: 자동 생성 한국어
-        for t in transcripts:
-            if t.language_code in ("ko", "ko-KR"):
-                text = " ".join(chunk.text for chunk in t.fetch())
-                return text
+        # 중복 제거
+        seen = set()
+        unique_lines = []
+        for line in text_lines:
+            if line not in seen:
+                seen.add(line)
+                unique_lines.append(line)
 
-        # 3순위: 번역 가능한 자막을 한국어로 번역
-        for t in transcripts:
-            if t.is_translatable:
-                try:
-                    text = " ".join(chunk.text for chunk in t.translate("ko").fetch())
-                    return text
-                except Exception:
-                    pass
+        # 임시 파일 삭제
+        for f in vtt_files:
+            os.remove(f)
 
-        # 4순위: 아무 자막이나 가져오기
-        t = transcripts[0]
-        text = " ".join(chunk.text for chunk in t.fetch())
-        return text
+        return " ".join(unique_lines) if unique_lines else None
 
+    except subprocess.TimeoutExpired:
+        print(f"(타임아웃)", end=" ", flush=True)
+        return None
     except Exception as e:
-        print(f"(오류: {type(e).__name__}: {str(e)[:80]})", end=" ", flush=True)
+        print(f"(오류: {str(e)[:60]})", end=" ", flush=True)
         return None
 
 # ── Claude 분석 ───────────────────────────────────────────────────

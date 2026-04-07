@@ -1,6 +1,6 @@
 """
 설정 파일 - API 키 및 전역 설정값
-실제 사용 시 ANTHROPIC_API_KEY와 CHANNEL_URL을 입력하세요.
+실제 사용 시 각 항목에 본인의 API 키를 입력하세요.
 """
 
 import os
@@ -8,6 +8,24 @@ import os
 # ─── Claude API ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "여기에_Claude_API_키_입력")
 CLAUDE_MODEL = "claude-sonnet-4-6"
+CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"  # 영상별 요약용 (저렴)
+
+# ─── 한국투자증권 KIS API ───────────────────────────────────────────────────────
+# KIS Developers (https://apiportal.koreainvestment.com) 에서 발급
+KIS_APP_KEY = os.environ.get("KIS_APP_KEY", "여기에_AppKey_입력")
+KIS_APP_SECRET = os.environ.get("KIS_APP_SECRET", "여기에_AppSecret_입력")
+
+# 모의투자: True / 실전투자: False
+KIS_IS_VIRTUAL = True  # 처음엔 반드시 True(모의투자)로 테스트!
+
+# 실전투자 API URL
+KIS_BASE_URL = "https://openapi.koreainvestment.com:9443"
+# 모의투자 API URL
+KIS_VIRTUAL_BASE_URL = "https://openapivts.koreainvestment.com:9443"
+
+# WebSocket URL (실시간 시세)
+KIS_WS_URL = "ws://ops.koreainvestment.com:21000"
+KIS_VIRTUAL_WS_URL = "ws://ops.koreainvestment.com:31000"
 
 # ─── YouTube ────────────────────────────────────────────────────────────────────
 # 분석할 유튜브 채널 URL (채널 홈 또는 /videos 탭 URL)
@@ -25,11 +43,6 @@ BASE_DIR = pathlib.Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "principles.db"
 CACHE_DIR = DATA_DIR / "cache"
-
-# ─── 키움 브릿지 소켓 ──────────────────────────────────────────────────────────
-KIWOOM_HOST = "127.0.0.1"
-KIWOOM_PORT = 9999
-KIWOOM_TIMEOUT = 10  # 초
 
 # ─── 추천 엔진 ──────────────────────────────────────────────────────────────────
 # 실시간 갱신 주기 (초)

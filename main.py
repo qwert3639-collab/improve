@@ -36,6 +36,8 @@ def check_requirements():
         "yt_dlp": "yt-dlp",
         "youtube_transcript_api": "youtube-transcript-api",
         "PyQt5": "PyQt5",
+        "requests": "requests",
+        "websockets": "websockets",
     }
     for module, pkg in packages.items():
         try:
@@ -54,42 +56,54 @@ def check_requirements():
         sys.exit(1)
 
 
-def check_api_key():
-    """Claude API 키 확인"""
-    from config import ANTHROPIC_API_KEY
+def load_env_keys():
+    """
+    .env 파일 또는 환경변수에서 API 키를 로드합니다.
+    config.py의 기본값보다 .env 파일이 우선합니다.
+    """
+    import config
 
-    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "여기에_Claude_API_키_입력":
-        # .env 파일에서 로드 시도
-        env_path = Path(__file__).parent / ".env"
-        if env_path.exists():
-            try:
-                from dotenv import load_dotenv
-                load_dotenv(env_path)
-                import config
-                config.ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-                if config.ANTHROPIC_API_KEY:
-                    logger.info("API 키를 .env 파일에서 로드했습니다.")
-                    return
-            except Exception:
-                pass
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_path, override=True)
+            logger.info(".env 파일 로드 완료")
+        except ImportError:
+            # dotenv 없으면 수동 파싱
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, val = line.partition("=")
+                    os.environ.setdefault(key.strip(), val.strip())
 
-        # 환경변수 확인
-        env_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if env_key:
-            import config
-            config.ANTHROPIC_API_KEY = env_key
-            logger.info("API 키를 환경변수에서 로드했습니다.")
-            return
+    # Claude API 키
+    claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if claude_key and "여기에" not in claude_key:
+        config.ANTHROPIC_API_KEY = claude_key
 
+    # KIS API 키
+    kis_key = os.environ.get("KIS_APP_KEY", "")
+    kis_secret = os.environ.get("KIS_APP_SECRET", "")
+    if kis_key and "여기에" not in kis_key:
+        config.KIS_APP_KEY = kis_key
+    if kis_secret and "여기에" not in kis_secret:
+        config.KIS_APP_SECRET = kis_secret
+
+    # 경고 출력
+    missing = []
+    if not claude_key or "여기에" in config.ANTHROPIC_API_KEY:
+        missing.append("ANTHROPIC_API_KEY (Claude AI 분석용)")
+    if not kis_key or "여기에" in config.KIS_APP_KEY:
+        missing.append("KIS_APP_KEY / KIS_APP_SECRET (시세 조회용)")
+
+    if missing:
         print("=" * 60)
-        print("[경고] Claude API 키가 설정되지 않았습니다.")
+        print("[안내] 다음 API 키가 설정되지 않았습니다:")
+        for m in missing:
+            print(f"  - {m}")
         print()
-        print("설정 방법 (둘 중 하나):")
-        print("  1. config.py 파일의 ANTHROPIC_API_KEY 수정")
-        print("  2. 프로젝트 루트에 .env 파일 생성:")
-        print("     ANTHROPIC_API_KEY=sk-ant-...")
-        print()
-        print("API 키 없이는 채널 분석 및 AI 추천 기능을 사용할 수 없습니다.")
+        print(".env 파일에 입력하거나, 실행 후 메뉴에서 설정 가능합니다.")
         print("=" * 60)
 
 
@@ -101,8 +115,8 @@ def main():
     # 필수 패키지 확인
     check_requirements()
 
-    # API 키 확인
-    check_api_key()
+    # .env / 환경변수에서 API 키 로드
+    load_env_keys()
 
     # data 디렉토리 생성
     from config import DATA_DIR, CACHE_DIR

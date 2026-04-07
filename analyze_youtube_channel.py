@@ -133,7 +133,11 @@ def get_transcript(video_id, title):
         transcripts = list(transcript_list)
 
         if not transcripts:
+            print(f"(자막 목록 자체가 비어있음)", end=" ")
             return None
+
+        available = [f"{t.language_code}({'자동' if t.is_generated else '수동'})" for t in transcripts]
+        print(f"(사용 가능: {', '.join(available)})", end=" ")
 
         # 1순위: 수동 한국어
         for t in transcripts:
@@ -161,7 +165,8 @@ def get_transcript(video_id, title):
         text = " ".join(chunk.text for chunk in t.fetch())
         return text
 
-    except Exception:
+    except Exception as e:
+        print(f"({type(e).__name__}: {str(e)[:60]})", end=" ")
         return None
 
 # ── Claude 분석 ───────────────────────────────────────────────────

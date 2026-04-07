@@ -172,6 +172,7 @@ class RecommendationEngine:
                                     "change_rate": scored_map[code].get("change_rate", 0),
                                     "volume": scored_map[code].get("volume", 0),
                                 })
+                            rec["source"] = "ai"  # AI 분석 결과 표시
 
                         ai_results.sort(
                             key=lambda x: (x.get("action") == "BUY", x.get("score", 0)),

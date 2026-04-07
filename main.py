@@ -136,6 +136,35 @@ def main():
     app.setApplicationName("주식 종목 추천 시스템")
     app.setStyle("Fusion")
 
+    # ── AI 기본 프로바이더 초기화 ──────────────────────────────────────────
+    from ai.providers import get_ai_manager
+    import config as cfg
+    try:
+        manager = get_ai_manager()
+        provider = getattr(cfg, "AI_PROVIDER", "claude")
+        api_key = getattr(cfg, "AI_API_KEY", "") or getattr(cfg, "ANTHROPIC_API_KEY", "")
+        model = getattr(cfg, "AI_MODEL", "")
+        base_url = getattr(cfg, "OLLAMA_BASE_URL", "http://localhost:11434")
+        if api_key and "여기에" not in api_key:
+            manager.set_provider(provider, api_key, model, base_url)
+            logger.info(f"AI 프로바이더 초기화: {manager.get_status()}")
+    except Exception as e:
+        logger.warning(f"AI 초기화 실패 (설정 메뉴에서 입력 가능): {e}")
+
+    # ── 아침 투자 정보지 (찌라시) ─────────────────────────────────────────
+    from briefing.news_fetcher import should_show_briefing
+    from ui.morning_briefing_dialog import MorningBriefingDialog
+
+    if should_show_briefing():
+        logger.info("아침 투자 정보지 표시")
+        briefing = MorningBriefingDialog()
+        # 확인 버튼 누를 때까지 메인 창 뜨지 않음 (모달 실행)
+        result = briefing.exec_()
+        logger.info("아침 정보지 확인 완료. 메인 창 시작.")
+    else:
+        logger.info("오늘 정보지 이미 확인됨. 바로 시작.")
+
+    # ── 메인 창 ──────────────────────────────────────────────────────────
     window = MainWindow()
     window.show()
 

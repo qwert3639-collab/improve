@@ -20,6 +20,8 @@ from config import REFRESH_INTERVAL, KIS_IS_VIRTUAL
 
 logger = logging.getLogger(__name__)
 
+# AI 분석 보고서 팝업 표시 여부 (True: 매번 표시, False: 테이블만 갱신)
+SHOW_ANALYSIS_REPORT = True
 
 class MainWindow(QMainWindow):
     """메인 애플리케이션 창"""
@@ -231,6 +233,17 @@ class MainWindow(QMainWindow):
     def _on_recommendations_updated(self, recommendations: list):
         self.rec_panel.update_recommendations(recommendations)
 
+        # AI가 새로 분석한 결과(source != "rule")이면 보고서 팝업
+        if SHOW_ANALYSIS_REPORT and recommendations:
+            ai_recs = [r for r in recommendations if r.get("source") != "rule"]
+            if ai_recs and hasattr(self._engine, "_last_report_shown"):
+                import time
+                # 같은 AI 결과를 중복 팝업하지 않도록 타임스탬프 비교
+                if time.time() - self._engine._last_report_shown < 5:
+                    return
+            if ai_recs:
+                self._show_analysis_report(recommendations)
+
     def _on_engine_error(self, message: str):
         self.rec_panel.set_status(f"오류: {message}", is_error=True)
         logger.error(f"추천 엔진 오류: {message}")
@@ -248,6 +261,17 @@ class MainWindow(QMainWindow):
             self.rec_panel.update_recommendations(recs)
         else:
             self.rec_panel.set_status("추천 데이터 없음. 채널 분석을 먼저 진행하세요.")
+
+    def _show_analysis_report(self, recommendations: list):
+        """분석 보고서 팝업"""
+        import time
+        from ui.analysis_report_dialog import show_analysis_report
+        self._engine._last_report_shown = time.time()
+        show_analysis_report(
+            recommendations,
+            self._engine.principles,
+            parent=self,
+        )
 
     def _show_help(self):
         help_text = """【사용 방법】

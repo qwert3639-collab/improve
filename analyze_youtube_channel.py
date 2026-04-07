@@ -134,7 +134,7 @@ def get_transcript(video_id, title):
 
     try:
         cmd = [
-            "yt-dlp",
+            sys.executable, "-m", "yt_dlp",
             "--write-auto-sub",
             "--sub-lang", "ko",
             "--sub-format", "vtt",

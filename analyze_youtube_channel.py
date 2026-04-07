@@ -125,21 +125,44 @@ def get_all_video_ids(channel_id):
     return videos
 
 def get_transcript(video_id, title):
-    """자막 가져오기 (한국어 우선, 영어 fallback)"""
+    """자막 가져오기 - 가능한 모든 방법 시도"""
     api = YouTubeTranscriptApi()
+
     try:
-        transcript = api.fetch(video_id, languages=["ko", "ko-KR", "en"])
-        text = " ".join(chunk.text for chunk in transcript)
-        return text
-    except Exception as e:
-        try:
-            # 자동 생성 자막 시도
-            transcript_list = api.list(video_id)
-            transcript = transcript_list.find_transcript(["ko", "en"])
-            text = " ".join(chunk.text for chunk in transcript.fetch())
-            return text
-        except Exception:
+        transcript_list = api.list(video_id)
+        transcripts = list(transcript_list)
+
+        if not transcripts:
             return None
+
+        # 1순위: 수동 한국어
+        for t in transcripts:
+            if t.language_code in ("ko", "ko-KR") and not t.is_generated:
+                text = " ".join(chunk.text for chunk in t.fetch())
+                return text
+
+        # 2순위: 자동 생성 한국어
+        for t in transcripts:
+            if t.language_code in ("ko", "ko-KR"):
+                text = " ".join(chunk.text for chunk in t.fetch())
+                return text
+
+        # 3순위: 번역 가능한 자막을 한국어로 번역
+        for t in transcripts:
+            if t.is_translatable:
+                try:
+                    text = " ".join(chunk.text for chunk in t.translate("ko").fetch())
+                    return text
+                except Exception:
+                    pass
+
+        # 4순위: 아무 자막이나 가져오기
+        t = transcripts[0]
+        text = " ".join(chunk.text for chunk in t.fetch())
+        return text
+
+    except Exception:
+        return None
 
 # ── Claude 분석 ───────────────────────────────────────────────────
 def analyze_with_claude(transcripts_data):

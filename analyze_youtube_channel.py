@@ -146,10 +146,15 @@ def get_transcript(video_id, title):
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "").strip()[:100]
+            print(f"(yt-dlp 오류: {err})", end=" ", flush=True)
+            return None
+
         # 생성된 자막 파일 읽기
         vtt_files = glob.glob(f"{tmp_prefix}*.vtt")
         if not vtt_files:
-            # 자막 파일이 없으면 실패
+            print(f"(vtt 파일 없음)", end=" ", flush=True)
             return None
 
         # vtt → 텍스트 변환

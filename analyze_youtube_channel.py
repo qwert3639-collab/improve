@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-YouTube 채널 영상 자막 수집 및 투자 원칙 분석 스크립트
+YouTube channel transcript collector and investment principles analyzer
 """
 
 import os
 import sys
 import time
 import json
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.parse import urlencode
 from urllib.error import HTTPError
 
-# ── 패키지 자동 설치 ──────────────────────────────────────────────
+# Auto-install packages
 def install(package):
     import subprocess
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
 
 try:
-    import yt_dlp
+    import google.generativeai as genai
 except ImportError:
-    print("yt-dlp 설치 중...")
-    install("yt-dlp")
+    print("google-generativeai 설치 중...")
+    install("google-generativeai")
+    import google.generativeai as genai
 
 try:
     import anthropic
@@ -29,19 +31,21 @@ except ImportError:
     install("anthropic")
     import anthropic
 
-# ── API 키 입력 ───────────────────────────────────────────────────
+# ── API 키 입력 ──────────────────────────────────────────────────────
 print("=" * 60)
 print("  YouTube 채널 투자 원칙 분석기")
 print("=" * 60)
 print()
 
-YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY") or input("YouTube Data API 키를 입력하세요: ").strip()
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY") or input("Anthropic API 키를 입력하세요: ").strip()
+YOUTUBE_API_KEY  = os.environ.get("YOUTUBE_API_KEY")  or input("YouTube Data API 키: ").strip()
+GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY")   or input("Gemini API 키: ").strip()
+ANTHROPIC_API_KEY= os.environ.get("ANTHROPIC_API_KEY")or input("Anthropic API 키: ").strip()
 
 CHANNEL_HANDLE = "@TV-lb7cv"
 
+genai.configure(api_key=GEMINI_API_KEY)
 
-# ── YouTube API 헬퍼 ──────────────────────────────────────────────
+# ── YouTube Data API ─────────────────────────────────────────────────
 def youtube_get(endpoint, params):
     params["key"] = YOUTUBE_API_KEY
     url = f"https://www.googleapis.com/youtube/v3/{endpoint}?{urlencode(params)}"
@@ -53,29 +57,19 @@ def youtube_get(endpoint, params):
         return None
 
 def get_channel_id(handle):
-    """@핸들로 채널 ID 조회"""
     print(f"\n채널 검색 중: {handle}")
-    data = youtube_get("search", {
-        "part": "snippet",
-        "q": handle,
-        "type": "channel",
-        "maxResults": 5
+    data = youtube_get("channels", {
+        "part": "id,snippet",
+        "forHandle": handle.lstrip("@")
     })
-    if not data or not data.get("items"):
-        # forHandle API 시도
-        data = youtube_get("channels", {
-            "part": "id,snippet",
-            "forHandle": handle.lstrip("@")
-        })
-        if data and data.get("items"):
-            ch = data["items"][0]
-            print(f"  채널명: {ch['snippet']['title']}")
-            return ch["id"]
-        return None
+    if data and data.get("items"):
+        ch = data["items"][0]
+        print(f"  채널명: {ch['snippet']['title']}")
+        return ch["id"]
 
-    # 검색 결과에서 핸들 매칭
-    for item in data["items"]:
-        ch_id = item["snippet"]["channelId"]
+    data = youtube_get("search", {"part": "snippet", "q": handle, "type": "channel", "maxResults": 5})
+    if data and data.get("items"):
+        ch_id = data["items"][0]["snippet"]["channelId"]
         ch_data = youtube_get("channels", {"part": "id,snippet,contentDetails", "id": ch_id})
         if ch_data and ch_data.get("items"):
             ch = ch_data["items"][0]
@@ -84,140 +78,73 @@ def get_channel_id(handle):
     return None
 
 def get_all_video_ids(channel_id):
-    """채널의 모든 영상 ID 수집"""
-    # uploads 재생목록 ID 조회
-    data = youtube_get("channels", {
-        "part": "contentDetails,snippet",
-        "id": channel_id
-    })
+    data = youtube_get("channels", {"part": "contentDetails", "id": channel_id})
     if not data or not data.get("items"):
         return []
 
     uploads_id = data["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
-    channel_title = data["items"][0]["snippet"]["title"]
     print(f"  업로드 재생목록 ID: {uploads_id}")
 
-    # 전체 영상 목록 수집 (페이지네이션)
     videos = []
     next_page = None
     while True:
-        params = {
-            "part": "snippet",
-            "playlistId": uploads_id,
-            "maxResults": 50
-        }
+        params = {"part": "snippet", "playlistId": uploads_id, "maxResults": 50}
         if next_page:
             params["pageToken"] = next_page
-
         data = youtube_get("playlistItems", params)
         if not data:
             break
-
         for item in data.get("items", []):
             vid_id = item["snippet"]["resourceId"]["videoId"]
-            title = item["snippet"]["title"]
+            title  = item["snippet"]["title"]
             videos.append({"id": vid_id, "title": title})
-
         next_page = data.get("nextPageToken")
         if not next_page:
             break
-
     return videos
 
-def get_transcript(video_id, title):
-    """yt-dlp로 자막 가져오기 (브라우저 쿠키 자동 사용)"""
-    import subprocess
-    import glob
-
+# ── Gemini로 자막 추출 ───────────────────────────────────────────────
+def get_transcript_gemini(video_id, title):
     url = f"https://www.youtube.com/watch?v={video_id}"
-    tmp_prefix = f"_tmp_{video_id}"
-
     try:
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
-            "--write-auto-sub",
-            "--sub-lang", "ko",
-            "--sub-format", "vtt",
-            "--skip-download",
-            "--no-warnings",
-            "--cookies-from-browser", "edge",
-            "-o", tmp_prefix,
-            url
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-        if result.returncode != 0:
-            err = (result.stderr or result.stdout or "").strip()[:100]
-            print(f"(yt-dlp 오류: {err})", end=" ", flush=True)
-            return None
-
-        # 생성된 자막 파일 읽기
-        vtt_files = glob.glob(f"{tmp_prefix}*.vtt")
-        if not vtt_files:
-            print(f"(vtt 파일 없음)", end=" ", flush=True)
-            return None
-
-        # vtt → 텍스트 변환
-        with open(vtt_files[0], encoding="utf-8") as f:
-            lines = f.readlines()
-
-        text_lines = []
-        for line in lines:
-            line = line.strip()
-            if not line or "-->" in line or line.startswith("WEBVTT") or line.isdigit():
-                continue
-            # HTML 태그 제거
-            import re
-            line = re.sub(r"<[^>]+>", "", line)
-            if line:
-                text_lines.append(line)
-
-        # 중복 제거
-        seen = set()
-        unique_lines = []
-        for line in text_lines:
-            if line not in seen:
-                seen.add(line)
-                unique_lines.append(line)
-
-        # 임시 파일 삭제
-        for f in vtt_files:
-            os.remove(f)
-
-        return " ".join(unique_lines) if unique_lines else None
-
-    except subprocess.TimeoutExpired:
-        print(f"(타임아웃)", end=" ", flush=True)
-        return None
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(
+            [
+                url,
+                "이 유튜브 영상의 전체 대화 내용을 한국어로 최대한 자세히 추출해줘. "
+                "요약하지 말고 실제 말한 내용을 그대로 적어줘. "
+                "영상에서 언급된 투자 관련 내용, 종목명, 수치, 전략을 빠짐없이 포함해줘."
+            ]
+        )
+        text = response.text.strip()
+        return text if text else None
     except Exception as e:
-        print(f"(오류: {str(e)[:60]})", end=" ", flush=True)
+        err = str(e)[:80]
+        print(f"(Gemini 오류: {err})", end=" ", flush=True)
         return None
 
-# ── Claude 분석 ───────────────────────────────────────────────────
+# ── Claude로 분석 ────────────────────────────────────────────────────
 def analyze_with_claude(transcripts_data):
-    """모든 자막을 Claude로 분석"""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    # 자막 텍스트 합치기 (너무 길면 나눠서 처리)
     combined = ""
     for item in transcripts_data:
         combined += f"\n\n[영상: {item['title']}]\n{item['transcript']}"
 
-    # 너무 길면 앞부분만 (Claude 컨텍스트 제한 고려)
-    max_chars = 150000
+    max_chars = 180000
     if len(combined) > max_chars:
         print(f"\n  (자막이 너무 길어 앞 {max_chars:,}자만 분석합니다)")
         combined = combined[:max_chars]
 
     print("\nClaude로 분석 중... (잠시 기다려주세요)")
 
-    prompt = f"""다음은 유튜브 채널 영상들의 자막 내용입니다.
+    prompt = f"""다음은 유튜브 채널 '창원개미TV' 영상들의 내용입니다.
 
 {combined}
 
 ---
 
-위 내용을 바탕으로, 이 유튜버의 **핵심 투자 원칙**을 카테고리별로 정리해주세요.
+위 내용을 바탕으로, 이 유튜버의 핵심 투자 원칙을 카테고리별로 정리해주세요.
 
 규칙:
 - 반드시 영상에서 실제로 언급된 내용만 추출할 것
@@ -237,15 +164,13 @@ def analyze_with_claude(transcripts_data):
     )
     return message.content[0].text
 
-# ── 메인 실행 ─────────────────────────────────────────────────────
+# ── 메인 ─────────────────────────────────────────────────────────────
 def main():
-    # 1. 채널 ID 조회
     channel_id = get_channel_id(CHANNEL_HANDLE)
     if not channel_id:
-        print("채널을 찾을 수 없습니다. API 키와 채널 핸들을 확인하세요.")
+        print("채널을 찾을 수 없습니다.")
         sys.exit(1)
 
-    # 2. 전체 영상 목록
     print("\n영상 목록 수집 중...")
     videos = get_all_video_ids(channel_id)
     print(f"  총 {len(videos)}개 영상 발견")
@@ -254,14 +179,13 @@ def main():
         print("영상을 찾을 수 없습니다.")
         sys.exit(1)
 
-    # 3. 자막 수집
-    print("\n자막 수집 중...")
+    print("\n자막 수집 중... (Gemini API 사용)")
     transcripts_data = []
     failed = []
 
     for i, video in enumerate(videos, 1):
-        print(f"  [{i}/{len(videos)}] {video['title'][:50]}", end=" ")
-        transcript = get_transcript(video["id"], video["title"])
+        print(f"  [{i}/{len(videos)}] {video['title'][:50]}", end=" ", flush=True)
+        transcript = get_transcript_gemini(video["id"], video["title"])
         if transcript:
             transcripts_data.append({
                 "title": video["title"],
@@ -271,19 +195,17 @@ def main():
             print(f"✓ ({len(transcript):,}자)")
         else:
             failed.append(video["title"])
-            print("✗ (자막 없음)")
-        time.sleep(0.5)  # API 요청 간격
+            print("✗ (실패)")
+        time.sleep(1)  # Gemini API rate limit
 
-    print(f"\n  자막 수집 완료: {len(transcripts_data)}개 성공, {len(failed)}개 실패")
+    print(f"\n  수집 완료: {len(transcripts_data)}개 성공, {len(failed)}개 실패")
 
     if not transcripts_data:
-        print("분석할 자막이 없습니다.")
+        print("분석할 내용이 없습니다.")
         sys.exit(1)
 
-    # 4. Claude 분석
     result = analyze_with_claude(transcripts_data)
 
-    # 5. 결과 출력 및 저장
     print("\n" + "=" * 60)
     print("  분석 결과")
     print("=" * 60)
@@ -291,9 +213,9 @@ def main():
 
     output_file = "investment_principles.md"
     with open(output_file, "w", encoding="utf-8") as f:
-        f.write(f"# {CHANNEL_HANDLE} 핵심 투자 원칙 분석\n\n")
+        f.write(f"# 창원개미TV 핵심 투자 원칙 분석\n\n")
         f.write(f"- 분석 영상 수: {len(transcripts_data)}개\n")
-        f.write(f"- 자막 없는 영상: {len(failed)}개\n\n")
+        f.write(f"- 실패한 영상: {len(failed)}개\n\n")
         f.write("---\n\n")
         f.write(result)
 

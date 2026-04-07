@@ -91,6 +91,13 @@ class MainWindow(QMainWindow):
         mode_action.setEnabled(False)
         kis_menu.addAction(mode_action)
 
+        # 설정
+        settings_menu = menubar.addMenu("설정")
+        settings_action = QAction("API 키 설정 (AI + KIS)...", self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self._show_settings)
+        settings_menu.addAction(settings_action)
+
         # 도움말
         help_menu = menubar.addMenu("도움말")
         about_action = QAction("사용 방법", self)
@@ -148,6 +155,13 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("KIS API 키 없음")
             self.rec_panel.set_status(str(e), is_error=True)
             QMessageBox.warning(self, "KIS API 설정 필요", str(e) + "\n\n메뉴 → KIS API → API 키 설정")
+
+    def _show_settings(self):
+        """통합 설정 다이얼로그"""
+        from ui.settings_panel import SettingsDialog
+        dialog = SettingsDialog(self)
+        dialog.settings_saved.connect(self._try_connect_kis)
+        dialog.exec_()
 
     def _show_api_key_dialog(self):
         """API 키 입력 다이얼로그"""

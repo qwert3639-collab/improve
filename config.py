@@ -5,10 +5,24 @@
 
 import os
 
-# ─── Claude API ────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "여기에_Claude_API_키_입력")
-CLAUDE_MODEL = "claude-sonnet-4-6"
-CLAUDE_HAIKU_MODEL = "claude-haiku-4-5-20251001"  # 영상별 요약용 (저렴)
+# ─── AI 프로바이더 설정 ──────────────────────────────────────────────────────────
+# 사용할 AI: "claude" | "openai" | "gemini" | "ollama"
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude")
+
+# 선택한 AI의 API 키 (Claude=Anthropic키, OpenAI=OpenAI키, Gemini=Google키, Ollama=불필요)
+AI_API_KEY = os.environ.get("AI_API_KEY", "")
+
+# 사용할 모델명 (비워두면 프로바이더별 기본값 사용)
+# Claude 권장: "claude-haiku-4-5-20251001" (가성비 최고, 월 ~$4)
+# OpenAI 권장: "gpt-4o-mini" (저렴)
+# Gemini 권장: "gemini-1.5-flash" (무료 한도 있음)
+AI_MODEL = os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001")
+
+# Ollama 서버 주소 (로컬 AI 사용 시)
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# ─── Claude API (하위 호환) ────────────────────────────────────────────────────
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", AI_API_KEY or "여기에_Claude_API_키_입력")
 
 # ─── 한국투자증권 KIS API ───────────────────────────────────────────────────────
 # KIS Developers (https://apiportal.koreainvestment.com) 에서 발급

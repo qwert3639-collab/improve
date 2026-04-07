@@ -39,7 +39,7 @@ class RecommendationEngine:
         self._on_update: Optional[Callable[[list[dict]], None]] = None
         self._on_error: Optional[Callable[[str], None]] = None
         self._last_ai_call = 0
-        self._ai_call_interval = 60  # AI는 1분마다 (API 비용 절약)
+        self._ai_call_interval = 15 * 60  # AI는 15분마다 (비용 절약 - 월 ~$4 수준)
         self._market_cache: list[dict] = []
         self._market_cache_time = 0.0
         self._market_cache_ttl = 30  # 시장 데이터 캐시 30초

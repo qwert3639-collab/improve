@@ -1,7 +1,7 @@
 """
 투자 원칙 추출기
-Claude API를 사용하여 유튜브 자막에서 투자 원칙을 분석하고 추출합니다.
-배치 처리로 토큰 한도를 고려합니다.
+설정된 AI 프로바이더(Claude/OpenAI/Gemini/Ollama)를 사용하여
+유튜브 자막에서 투자 원칙을 분석하고 추출합니다.
 """
 
 import json
@@ -10,33 +10,37 @@ import logging
 from typing import Callable, Optional
 from datetime import datetime
 
-import anthropic
-
 from config import (
-    ANTHROPIC_API_KEY,
-    CLAUDE_MODEL,
     DB_PATH,
     PRINCIPLE_EXTRACTION_SYSTEM_PROMPT,
     PRINCIPLE_EXTRACTION_USER_PROMPT,
     STOCK_RECOMMENDATION_PROMPT,
 )
+from ai.providers import get_ai_manager
 
 logger = logging.getLogger(__name__)
 
-# 한 번에 Claude에 보낼 최대 자막 문자 수
+# 한 번에 AI에 보낼 최대 자막 문자 수
 BATCH_CHAR_LIMIT = 60_000
 
 
-def _call_claude(system_prompt: str, user_prompt: str) -> str:
-    """Claude API 호출 헬퍼"""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    return message.content[0].text
+def _call_ai_analysis(system_prompt: str, user_prompt: str) -> str:
+    """채널 분석용 AI 호출 (고품질 모델)"""
+    manager = get_ai_manager()
+    if not manager.is_ready():
+        raise RuntimeError(
+            "AI 프로바이더가 설정되지 않았습니다.\n"
+            "메뉴 → 설정 → AI 설정에서 API 키를 입력해주세요."
+        )
+    return manager.chat_analysis(system_prompt, user_prompt, max_tokens=4096)
+
+
+def _call_ai_recommend(system_prompt: str, user_prompt: str) -> str:
+    """종목 추천용 AI 호출 (빠른 모델)"""
+    manager = get_ai_manager()
+    if not manager.is_ready():
+        raise RuntimeError("AI 프로바이더가 설정되지 않았습니다.")
+    return manager.chat_recommend(system_prompt, user_prompt, max_tokens=2048)
 
 
 def _split_into_batches(
@@ -103,7 +107,7 @@ def extract_principles_from_transcripts(
         prompt = PRINCIPLE_EXTRACTION_USER_PROMPT.format(transcripts=batch_text)
 
         try:
-            response_text = _call_claude(PRINCIPLE_EXTRACTION_SYSTEM_PROMPT, prompt)
+            response_text = _call_ai_analysis(PRINCIPLE_EXTRACTION_SYSTEM_PROMPT, prompt)
 
             # JSON 파싱 (마크다운 코드블록 제거)
             clean = response_text.strip()
@@ -268,7 +272,7 @@ def analyze_stocks_with_principles(
     system = "당신은 주식 투자 분석가입니다. 투자 원칙을 기반으로 종목을 분석하고 JSON으로 출력합니다."
 
     try:
-        response_text = _call_claude(system, prompt)
+        response_text = _call_ai_recommend(system, prompt)
 
         clean = response_text.strip()
         if clean.startswith("```"):
